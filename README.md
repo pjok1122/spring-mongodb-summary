@@ -298,4 +298,164 @@ public interface ParentRepository extends CrudRepository<Parent, String> {
 ```
 
 
+## MongoRepository
+
+위에서는 CrudRepository를 사용했지만, 보다 다양한 기능이 있는 Repository를 상속받는 것이 좋음.
+예를 들어 `CrudRepository`말고 `PagingAndSortingRepository`를 상속받으면, `CrudRepository`의 기능을 전부 사용할 수 있으며, 추가로 정렬과 페이지네이션과 관련된 메서드까지 자동으로 생성해줌.
+
+MongoDB를 사용하는 경우에는 `PagingAndSortingRepository` 말고 `MongoRepository`를 상속받는 것이 더 많은 기능을 사용할 수 있음. 
+
+- findAll()과 같은 메서드의 반환타입이 List<>로 변경됨.
+- `Query by Example` 기술을 사용할 수 있음.
+- `count`, `exist`와 같은 메서드를 기본적으로 제공함.
+
+
+```java
+public interface ParentMongoRepository extends MongoRepository<Parent, String> {
+}
+
+public interface ChildMongoRepository extends MongoRepository<Child, String> {
+}
+
+@SpringBootTest
+class ParentMongoRepositoryTest {
+    // member variable omit..
+
+    @Test
+    void findAllPaging() {
+        initTestData();         //default data is injected to Parent, Child collection 
+
+        Page<Parent> parents = parentMongoRepository.findAll(PageRequest.of(0, 10));
+
+        assertEquals(3, parents.getTotalElements());
+        assertTrue(parents.isFirst());
+    }
+}
+```
+
+### 메서드 반환타입과 이름에 따른 차이
+
+- `List<Person> findByLastname(String lastname)` : lastname에 해당하는 모든 Person을 조회함.
+
+- `Page<Person> findByFirstname(String firstname, Pageable pageable)` : firstname에 해당하는 Persion을 page요청에 맞게 조회함.
+
+- `Person findByShippingAddresses(Address address)` : 조회대상으로 Value Object를 사용할 수 있음. 리턴 타입을 단일 객체로 할 경우, 2개 이상이 조회되면 `IncorrectResultSizeDataAccessException` 예외 발생.
+
+- `Person findFirstByLastname(String lastname)` : `findFirst`는 가장 위에 조회되는 한 건만 찾음.
+
+- `Stream<Person> findAllBy()` : 자바8 이상부터는 반환타입을 Stream으로 받을 수도 있음.
+
+
+### 삭제 쿼리
+
+- `List <Person> deleteByLastname(String lastname)` : 삭제하기 전에 해당하는 데이터를 조회해서 반환함.
+
+- `Long deletePersonByLastname(String lastname)` : 삭제하고 삭제된 데이터 수를 반환함.
+
+- `Person deleteSingleByLastname(String lastname)` : 일치하는 첫 번째 document만 반환하고 삭제함.
+
+- `Optional<Person> deleteByBirthdate(Date birthdate)` : NPE를 방지하기 위해 Optional을 썼을 뿐, 위와 동일함.
+
+
+## QueryDSL 사용하기
+
+### 의존성 주입
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-mongodb</artifactId>
+</dependency>
+
+<!-- Query DSL-->
+<dependency>
+    <groupId>com.querydsl</groupId>
+    <artifactId>querydsl-apt</artifactId>
+    <scope>provided</scope>
+</dependency>
+<dependency>
+    <groupId>com.querydsl</groupId>
+    <artifactId>querydsl-mongodb</artifactId>
+</dependency>
+<dependency>
+    <groupId>com.querydsl</groupId>
+    <artifactId>querydsl-core</artifactId>
+</dependency>
+```
+
+```xml
+<build>
+    <plugins>
+    ...
+        <plugin>
+            <groupId>com.mysema.maven</groupId>
+            <artifactId>apt-maven-plugin</artifactId>
+            <version>1.1.3</version>
+            <executions>
+                <execution>
+                    <id>mongodb-processor</id>
+                    <goals>
+                        <goal>process</goal>
+                    </goals>
+                    <configuration>
+                        <outputDirectory>target/generated-sources/java</outputDirectory>
+                        <processor>org.springframework.data.mongodb.repository.support.MongoAnnotationProcessor</processor>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    ...
+    </plugins>
+</build>
+```
+
+- @Document 애노테이션을 사용하는 경우에는 `org.springframework.data.mongodb.repository.support.MongoAnnotationProcessor`를 사용하고, Morphia Annotation을 사용하는 경우에는 `com.mysema.query.mongodb.MongodbAnnotationProcessor`로 processor를 변경한다.
+
+- 의존성과 플러그인을 넣어줬으면, `mvn clean install`을 수행한다.
+
+여기서는 Spring Data가 제공해주는 @Document 애노테이션을 사용해서 예제를 진행해본다.
+
+
+### Repository 생성
+
+```java
+public interface ParentQueryDslRepository extends MongoRepository<Parent, String>, QuerydslPredicateExecutor<Parent> {
+}
+```
+
+- `MongoRepository`와 `QuerydslPredicateExecutor`를 상속받는 레파지토리를 생성한다.
+
+- `QuerydslPredicateExecutor` 안에는 `Predicate`로 데이터를 조회할 수 있는 메서드들이 정의되어있다. `Predicate`는 조회하고자 하는 대상을 Filtering하는 객체정도로 생각해도 무방할 것 같다.
+
+
+### Predicate를 이용해 조회해보기.
+
+
+```java
+
+@Service
+@RequiredArgsConstructor
+public class ParentQueryDslService {
+    @Autowired
+    private final ParentQueryDslRepository parentRepository;
+
+    public List<Parent> findParentByQueryDsl(String parentName, String childName) {
+        QParent parent = QParent.parent;
+
+        BooleanExpression predicate = parent.name.eq(parentName)
+                                                 .and(parent.child.name.startsWith(childName));
+
+        Iterable<Parent> all = parentRepository.findAll(predicate);
+
+        List<Parent> parents = new ArrayList<>();
+        all.forEach(parents::add);
+
+        return parents;
+    }
+}
+```
+
+- `QClass`를 사용하는 것은 JPA QueryDSL을 사용할 때와 동일하다. JPA QueryDSL은 `JPAQueryFactory`에서 `Query`를 꺼내와 질의를 하는 구조로 되어있다. `MorphiaQuery`를 사용하면 거의 동일한 방식으로 데이터를 질의할 수 있다. 여기서는 `Predicate`를 이용해서 진행해보자.
+
+- `parent.name.eq(parentName)`처럼 조건문을 `QClass`에서 바로 생성할 수 있고, 반환타입이 `BooleanExpression`이다. `BooleanExpression`은 `Predicate`를 구현한 객체로, 여러가지를 질의할 수 있는 편리한 기능을 제공한다.
 

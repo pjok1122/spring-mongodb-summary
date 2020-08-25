@@ -1,15 +1,14 @@
-package me.youngjae.park.mongodb_test;
+package me.youngjae.park.mongodb_test.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import me.youngjae.park.mongodb_test.entity.Child;
@@ -18,47 +17,21 @@ import me.youngjae.park.mongodb_test.repository.ChildRepository;
 import me.youngjae.park.mongodb_test.repository.ParentRepository;
 
 @SpringBootTest
-class ParentRepositoryTest {
+class ParentQueryDslServiceTest {
 
     @Autowired
-    ParentRepository parentRepository;
+    ParentQueryDslService parentQueryDslService;
+
+    @Autowired
+    MongoTemplate mongoTemplate;
 
     @Autowired
     ChildRepository childRepository;
 
     @Autowired
-    MongoTemplate mongoTemplate;
+    ParentRepository parentRepository;
 
-    @Test
-    void findByName() {
-        initTestData();
-
-        // 메서드 이름 규칙에 따라 Proxy에 기능을 구현해줌.
-        List<Parent> parents = parentRepository.findByName("parent2");
-
-        assertEquals(2, parents.size());
-    }
-
-    @Test
-    void findByChildName() {
-        initTestData();
-
-        List<Parent> parents = parentRepository.findByChildName("child2");
-
-        assertEquals(2, parents.size());
-
-    }
-
-    @Test
-    void findPageByName() {
-        initTestData();
-
-        Page<Parent> page = parentRepository.findPageByName("parent2", PageRequest.of(0, 10));
-
-        assertEquals(2, page.getTotalElements());
-        assertEquals(2, page.getContent().size());
-    }
-
+    @BeforeEach
     public void initTestData() {
         mongoTemplate.dropCollection(Parent.class);
         mongoTemplate.dropCollection(Child.class);
@@ -75,4 +48,14 @@ class ParentRepositoryTest {
         childRepository.saveAll(Arrays.asList(child, child2, child3));
         parentRepository.saveAll(Arrays.asList(parent, parent2, parent3));
     }
+
+    @Test
+    void usingQueryDslExecutor() {
+        List<Parent> parents = parentQueryDslService.findParentByQueryDsl("parent2", "child");
+
+        for (Parent parent : parents) {
+            System.out.println(parent);
+        }
+    }
+
 }

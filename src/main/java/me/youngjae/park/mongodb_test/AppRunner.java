@@ -1,7 +1,5 @@
 package me.youngjae.park.mongodb_test;
 
-import java.util.List;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -10,6 +8,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
+
+import me.youngjae.park.mongodb_test.entity.Account;
 
 @Component
 public class AppRunner implements ApplicationRunner {
